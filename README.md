@@ -8,6 +8,7 @@ On the other hand, I used `Python` to draw and manipulate the steaming of the vi
 
 ## TODO
 
+* [ ] Upload differents kind of images to train the model. 🛠️ (In Progress)
 * [ ] Create Model
 * [ ] Draw boxes in video streaming
 * [ ] OCR
