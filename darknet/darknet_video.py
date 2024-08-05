@@ -54,8 +54,8 @@ def parse_args():
     parser.add_argument("--data_file", default="coco.data",
                         help="path to data file")
 
-    # Add argument for the threshold to filter detections. Default is set to 0.25.
-    parser.add_argument("--thresh", type=float, default=.25,
+    # Add argument for the threshold to filter detections. Default is set to 0.75.
+    parser.add_argument("--thresh", type=float, default=.75,
                         help="remove detections with confidence below this value")
 
     # Add argument for specifying the GPU index to use. Default is '0'.
