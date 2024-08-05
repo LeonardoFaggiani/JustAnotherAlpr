@@ -10,7 +10,7 @@ On the other hand, I used `Python` to draw and manipulate the steaming of the vi
 Installation & Requirements
 ------------
 
-1) Install the Darknet framework, I recommend the following repository
+1) Install the `Darknet` framework, I recommend the following repository
 https://github.com/hank-ai/darknet
 2) Clone https://github.com/LeonardoFaggiani/JustAnotherAlpr.git
 3) Go to the darknet folder and modify the darknet.py file on line 328 "{path/to/your}/darknet.dll" replace {path/to/your} with the path where the darknet installer is located, save it.
@@ -32,6 +32,13 @@ Usage
 
 ### Save Processed Video
     python darknet_video.py --input Testing-Driving.mp4 --out_filename processed_Testing-Driving.avi --weights ..\nn\license-plate\license-plate.weights --config_file ..\nn\license-plate\license-plate.cfg --data_file ..\nn\license-plate\license-plate.data
+
+License Plate Metrics
+-----
+![image](https://github.com/user-attachments/assets/f25cf85f-5068-4334-8e01-01c2f443832c)
+
+![image](https://github.com/user-attachments/assets/10ce5c59-1d5c-4b39-89e9-5d13f6af41c6)
+
 
 
 ## TODO
