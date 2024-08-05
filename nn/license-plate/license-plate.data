@@ -1,2 +1,2 @@
 classes = 1
-names = license-plate.names
+names = {path/to/your}/nn/license-plate/license-plate.names

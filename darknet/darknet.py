@@ -160,7 +160,6 @@ def draw_boxes(detections, image, colors):
     import cv2
     for label, confidence, bbox in detections:
         left, top, right, bottom = bbox2points(bbox)
-        print("EL COLOR ES: {}".format(colors[label]))
         cv2.rectangle(image, (left, top), (right, bottom), colors[label], 1)
         cv2.putText(image, "{} [{:.2f}]".format(label, float(confidence)), (left, top - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colors[label], 2)
     return image
@@ -326,7 +325,7 @@ def detect_image(network, class_names, image, thresh=.5, hier_thresh=.5, nms=.45
 if os.name == "posix":
     libpath = "/usr/lib/libdarknet.so"
 elif os.name == "nt":
-    libpath = "D:/Darknet/bin/darknet.dll"
+    libpath = "path/to/your/darknet.dll"
 else:
     print("Unsupported OS")
     exit
