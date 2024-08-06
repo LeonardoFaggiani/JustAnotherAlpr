@@ -6,11 +6,7 @@ This is a proof of concept of how to train my own `YOLO` model to detect vehicle
 
 On the other hand, I used `Python` to draw and manipulate the steaming of the video.
 
-<<<<<<< HEAD
 ![Alt Text](./darknet/samples/LicensePlate.gif)
-=======
-[![Alt Text](./darknet/samples/LicensePlate.gif)]
->>>>>>> 6bcb30b207a47b4e5eb3d8ee5860e3736855263c
 
 
 Installation & Requirements
