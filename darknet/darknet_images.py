@@ -53,7 +53,7 @@ def parser():
                         help="path to data file")
 
     # --thresh: Sets the confidence threshold for removing detections with lower confidence
-    parser.add_argument("--thresh", type=float, default=.25,
+    parser.add_argument("--thresh", type=float, default=.60,
                         help="remove detections with lower confidence")
 
     # --gpu: If provided, indicates the use of GPU for processing
