@@ -378,10 +378,6 @@ make_network_boxes.restype = POINTER(DETECTION)
 free_detections = lib.free_detections
 free_detections.argtypes = [POINTER(DETECTION), c_int]
 
-# Define and comment function to free batch detections
-free_batch_detections = lib.free_batch_detections
-free_batch_detections.argtypes = [POINTER(DETNUMPAIR), c_int]
-
 # Define and comment function to free pointers
 free_ptrs = lib.free_ptrs
 free_ptrs.argtypes = [POINTER(c_void_p), c_int]
