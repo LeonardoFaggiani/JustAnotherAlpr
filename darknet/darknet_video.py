@@ -11,6 +11,7 @@ from threading import Thread, enumerate
 from queue import Queue
 import signal
 import sys
+import numpy as np
 
 # Global flag to control the execution of threads
 is_running = True
@@ -19,8 +20,8 @@ is_running = True
 capture_thread = None
 inference_thread = None
 drawing_thread = None
-frame_delay = 30  # Delay in milliseconds (default is 30 for normal speed)
-
+plate_ocr_queue = None
+frame_delay = 2  # Delay in milliseconds (default is 30 for normal speed)
 
 def parse_args():
     # Create an ArgumentParser object with a description for YOLO Object Detection.
@@ -66,7 +67,6 @@ def parse_args():
     return parser.parse_args()
 
 
-
 def str2int(video_path):
     """
     argparse returns and string althout webcam uses int (0, 1 ...)
@@ -104,7 +104,6 @@ def check_arguments_errors(args):
     # If this conversion fails, the input is treated as a file path, which should exist.
     if str2int(args.input) == str and not os.path.exists(args.input):
         raise(ValueError("Invalid video path {}".format(os.path.abspath(args.input))))
-
 
 
 def set_saved_video(input_video, output_video, size):
@@ -220,11 +219,12 @@ def convert4cropping(image, bbox):
 
     return bbox_cropping
 
+
 def signal_handler(sig, frame):
     """
     Handles a specific signal and stops the main loop.
     """
-    global is_running, capture_thread, inference_thread, drawing_thread
+    global is_running, capture_thread, inference_thread, drawing_thread, drawing_ocr_thread
     is_running = False
 
     # Join threads
@@ -234,9 +234,13 @@ def signal_handler(sig, frame):
         inference_thread.join()
     if drawing_thread is not None:
         drawing_thread.join()
+    if drawing_ocr_thread is not None:
+        drawing_ocr_thread.join()
+
 
 def video_capture(frame_queue, darknet_image_queue):
     global is_running, frame_delay
+
     while is_running and cap.isOpened():
         ret, frame = cap.read()  # Read a frame from the video source
         if not ret:  # If no frame is captured, break the loop
@@ -246,10 +250,6 @@ def video_capture(frame_queue, darknet_image_queue):
         key = cv2.waitKey(frame_delay) & 0xFF
         if key == ord('q'):
             is_running = False
-        elif key == 82:  # Arrow Up Key
-            frame_delay = max(1, frame_delay - 5)  # Decrease delay, speed up
-        elif key == 84:  # Arrow Down Key
-            frame_delay += 5  # Increase delay, slow down
 
         # Convert the frame from BGR (OpenCV default) to RGB
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -265,45 +265,36 @@ def video_capture(frame_queue, darknet_image_queue):
         darknet.copy_image_from_bytes(img_for_detect, frame_resized.tobytes())
 
         # Put the Darknet image in the Darknet image queue
-        darknet_image_queue.put(img_for_detect)
+        darknet_image_queue.put(img_for_detect)        
 
     # Release the video source when the loop ends
     cap.release()
 
 
-
-def inference(darknet_image_queue, detections_queue, fps_queue):
+def inference(darknet_image_queue, detections_queue):
     """
     Processes images using the Darknet YOLO framework for object detection.
 
     Parameters:
     darknet_image_queue: A queue containing images to be processed.
     detections_queue: A queue to put the detections for later use.
-    fps_queue: A queue to put the calculated frames per second (FPS) values.
 
     This function continuously retrieves images from the darknet_image_queue,
-    performs object detection on them, and puts the detections and FPS values into
-    their respective queues. This allows for parallel processing and data handling
+    performs object detection on them, and puts the detections into his respective queues.
+    This allows for parallel processing and data handling
     in other threads.
     """
     global is_running
     while is_running and cap.isOpened():
         darknet_image = darknet_image_queue.get()  # Retrieve an image from the queue
 
-        prev_time = time.time()  # Record the time before detection
-
         # Perform object detection on the image
         detections = darknet.detect_image(network, class_names, darknet_image, thresh=args.thresh)
 
         detections_queue.put(detections)  # Put the detections in the detections queue
 
-        # Calculate FPS
-        fps = int(1 / (time.time() - prev_time))
-        fps_queue.put(fps)  # Put the FPS value in the fps queue
-        print("FPS: {}".format(fps))  # Print the FPS
-
         # Print detections if extended output is enabled
-        darknet.print_detections(detections, args.ext_output)
+        #darknet.print_detections(detections, args.ext_output)
 
         darknet.free_image(darknet_image)  # Free the memory of the Darknet image
 
@@ -311,59 +302,152 @@ def inference(darknet_image_queue, detections_queue, fps_queue):
     cap.release()
 
 
-def drawing(frame_queue, detections_queue, fps_queue):
+def create_crops(frame_queue, detections_queue):
     """
-    Draws bounding boxes on frames and displays them.
+    Create crops for each detection of license-plate.
 
     Parameters:
     frame_queue: Queue from which to retrieve frames.
     detections_queue: Queue from which to retrieve detections for each frame.
-    fps_queue: Queue from which to retrieve frames per second (FPS) values.
 
     This function continuously retrieves frames and their corresponding detections,
-    draws bounding boxes on the frames, and displays them. If an output filename
-    is provided, it also writes the frames to a video file.
+    then create the crops for every detection and saves it into a queue for OCR.
     """
     global is_running
     random.seed(3)  # Ensure consistent colors for bounding boxes across runs
+
+
+
+    while is_running and cap.isOpened():
+        frame = frame_queue.get()  # Retrieve a frame from the queue
+        detections = detections_queue.get()  # Retrieve detections for the frame
+
+        detections_adjusted = []
+
+        if frame is not None and frame.size > 0:
+            # Adjust each detection to the original frame size and add to list
+            for label, confidence, bbox in detections:
+                bbox_adjusted = convert2original(frame, bbox)
+                detections_adjusted.append((str(label), confidence, bbox_adjusted))
+            
+            crops_resized = get_crops(detections_adjusted, frame)
+
+            ocr_items = (crops_resized, frame, detections_adjusted)
+
+            plate_ocr_queue.put(ocr_items)
+            
+    # Release resources
+    cap.release()
+    cv2.destroyAllWindows()
+
+
+def drawing_boxes_and_lincese_plate(plate_ocr_queue):
+    """
+    Draws bounding boxes on frames and displays them.
+
+    Parameters:
+    plate_ocr_queue: Queue from which to retrieve detections for each crops and their corresponding bbox.
+
+    This function continuously retrieves the queue of crops and their corresponding bbox,
+    if an output filename is provided, it also writes the frames to a video file.
+    """
+
+    import cv2
+    global is_running
 
     # Initialize video writer if an output filename is specified
     video = set_saved_video(cap, args.out_filename, (video_width, video_height))
 
     while is_running and cap.isOpened():
-        frame = frame_queue.get()  # Retrieve a frame from the queue
-        detections = detections_queue.get()  # Retrieve detections for the frame
-        fps = fps_queue.get()  # Retrieve the FPS value (currently unused)
 
-        detections_adjusted = []
+        cropsAndBbox, frame, detections_adjusted = plate_ocr_queue.get()
 
-        if frame is not None:
-            # Adjust each detection to the original frame size and add to list
-            for label, confidence, bbox in detections:
-                bbox_adjusted = convert2original(frame, bbox)
-                detections_adjusted.append((str(label), confidence, bbox_adjusted))
+        for crop, bbox_adjusted in cropsAndBbox:
 
-            # Draw bounding boxes on the frame
-            image = darknet.draw_boxes(detections_adjusted, frame, class_colors)
+            height, width = crop.shape[:2]
 
+            if crop is not None and crop.size > 0 and  width > 0 and height > 0: 
+                left, top, right, bottom = darknet.bbox2points(bbox_adjusted)  
+                frame = read_lincese_plate_by_ocr(frame, crop, detections_adjusted, left, top)
+        
+        if frame is not None:    
             if not args.dont_show:
-                cv2.imshow('Inference', image)  # Display the frame
+                cv2.imshow('Inference', frame)  # Display the frame
 
-            # Check if the 'q' key is pressed to stop the process
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                is_running = False
-                break
+                # Check if the 'q' key is pressed to stop the process
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    is_running = False
+                    break
+        
+        # Write the frame to the output video file if specified
+        if args.out_filename is not None:
+            video.write(frame)
 
-            # Write the frame to the output video file if specified
-            if args.out_filename is not None:
-                video.write(image)
-
-    # Release resources
-    cap.release()
     video.release()
-    cv2.destroyAllWindows()
+            
+# Function to read license plate
+def read_lincese_plate_by_ocr(image, crop, detections_adjusted, left, top):
 
+    """
+    Return the frame with the license-plate has red
 
+    Parameters:
+    image: the current frame to write boxes and license-plate
+    crop: crop of lincese-plate.
+    detections_adjusted: the detection of lincese-plate (label, condifence, bbox)
+    left: position that start the letters of license-plate
+    top: position that start the letters of license-plate
+
+    This function return the final frame with the box of license-plate detected and ORC result unless
+    the average of OCR result is under 65% of condifence 
+    """
+    import cv2
+
+    result, confidences = darknet.plate_recognizer.run(crop, True)
+
+    average = np.mean(confidences)
+
+    if result is not None and average > 0.65:
+        # Draw bounding boxes on the frame    
+        image = darknet.draw_boxes(detections_adjusted, image, class_colors)                   
+        cv2.putText(image, result[0], (left, top - 20), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
+
+    return image
+
+# Function to create crops
+def get_crops(detections, image, scale_percent = 3):
+
+    """
+    Return the crops resized and in grey format for OCR with the corresponding bbox
+
+    Parameters:
+    detections: Queue from which to retrieve detections for each crops and their corresponding bbox.
+    image: frames.
+    scale_percent: Scale in percent to resize the crops.
+
+    This function return the crops resized and in grey format.
+    """
+    import cv2
+
+    crops_resized = []
+
+    for label, confidence, bbox_adjusted in detections:
+
+        left, top, right, bottom = darknet.bbox2points(bbox_adjusted)  
+
+        height, width = image.shape[:2]
+
+        width = int((width  * scale_percent / 100))
+        height = int((height  * scale_percent / 100))   
+
+        crop = image[top-5:bottom+5, left-5:right+5]
+
+        if crop is not None and crop.size > 0:
+            image_resized = cv2.resize(crop, (width, height), interpolation=cv2.INTER_CUBIC)
+            image_grey = cv2.cvtColor(image_resized, cv2.COLOR_BGR2GRAY)
+            crops_resized.append((image_grey, bbox_adjusted))
+
+    return crops_resized
 
 
 if __name__ == '__main__':
@@ -391,23 +475,26 @@ if __name__ == '__main__':
     video_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     frame_queue = Queue()
+    plate_ocr_queue = Queue()
     darknet_image_queue = Queue(maxsize=1)
     detections_queue = Queue(maxsize=1)
-    fps_queue = Queue(maxsize=1)
 
     # Start threads and assign them to global variables
     capture_thread = Thread(target=video_capture, args=(frame_queue, darknet_image_queue))
-    inference_thread = Thread(target=inference, args=(darknet_image_queue, detections_queue, fps_queue))
-    drawing_thread = Thread(target=drawing, args=(frame_queue, detections_queue, fps_queue))
+    inference_thread = Thread(target=inference, args=(darknet_image_queue, detections_queue))
+    drawing_thread = Thread(target=create_crops, args=(frame_queue, detections_queue))
+    drawing_ocr_thread = Thread(target=drawing_boxes_and_lincese_plate, args=(plate_ocr_queue,))
 
     capture_thread.start()
     inference_thread.start()
     drawing_thread.start()
+    drawing_ocr_thread.start()
 
     # Wait for threads to finish
     capture_thread.join()
     inference_thread.join()
     drawing_thread.join()
+    drawing_ocr_thread.join()
 
     # Flush and close standard outputs
     sys.stdout.flush()

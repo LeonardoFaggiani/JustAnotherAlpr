@@ -22,6 +22,8 @@ See the example code (such as "example_images.py") which imports this module.
 from ctypes import *
 import os
 import hashlib
+import numpy as np
+from fast_plate_ocr import ONNXPlateRecognizer
 
 # Define a structure to represent a bounding box with (x, y, width, height)
 class BOX(Structure):
@@ -158,11 +160,15 @@ def draw_boxes(detections, image, colors):
     """
     
     import cv2
+    
     for label, confidence, bbox in detections:
         left, top, right, bottom = bbox2points(bbox)
+
         cv2.rectangle(image, (left, top), (right, bottom), colors[label], 1)
         cv2.putText(image, "{} [{:.2f}]".format(label, float(confidence)), (left, top - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colors[label], 2)
+        
     return image
+
 
 # Function to decode detection results and format confidence scores
 def decode_detection(detections):
@@ -448,3 +454,6 @@ predict_image_letterbox.restype = POINTER(c_float)
 network_predict_batch = lib.network_predict_batch
 network_predict_batch.argtypes = [c_void_p, IMAGE, c_int, c_int, c_int, c_float, c_float, POINTER(c_int), c_int, c_int]
 network_predict_batch.restype = POINTER(DETNUMPAIR)
+
+# Define plates OCR
+plate_recognizer = ONNXPlateRecognizer('argentinian-plates-cnn-model')
