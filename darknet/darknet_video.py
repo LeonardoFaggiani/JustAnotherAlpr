@@ -21,7 +21,7 @@ capture_thread = None
 inference_thread = None
 drawing_thread = None
 plate_ocr_queue = None
-frame_delay = 2  # Delay in milliseconds (default is 30 for normal speed)
+frame_delay = 20  # Delay in milliseconds (default is 30 for normal speed)
 
 def parse_args():
     # Create an ArgumentParser object with a description for YOLO Object Detection.
@@ -66,7 +66,6 @@ def parse_args():
     # Parse the arguments received from the command line and return them.
     return parser.parse_args()
 
-
 def str2int(video_path):
     """
     argparse returns and string althout webcam uses int (0, 1 ...)
@@ -76,7 +75,6 @@ def str2int(video_path):
         return int(video_path)
     except ValueError:
         return video_path
-
 
 def check_arguments_errors(args):
     # Assert that the threshold value is between 0 and 1 (exclusive). This is to ensure that the threshold
@@ -105,7 +103,6 @@ def check_arguments_errors(args):
     if str2int(args.input) == str and not os.path.exists(args.input):
         raise(ValueError("Invalid video path {}".format(os.path.abspath(args.input))))
 
-
 def set_saved_video(input_video, output_video, size):
     # Define the video codec using the FourCC code.
     # 'MJPG' is used here which stands for Motion-JPEG codec.
@@ -124,102 +121,6 @@ def set_saved_video(input_video, output_video, size):
     # Return the VideoWriter object so it can be used to write frames to the output video file.
     return video
 
-
-def convert2relative(bbox):
-    """
-    Converts bounding box coordinates from absolute to relative values.
-    In YOLO, relative coordinates are used where the dimensions of the image are normalized to a range of 0 to 1.
-
-    Parameters:
-    bbox (tuple): A tuple containing the bounding box's absolute coordinates in the format (x, y, w, h).
-                  Here, x and y represent the center of the box, while w and h are its width and height.
-
-    Returns:
-    tuple: A tuple containing the bounding box's relative coordinates.
-    """
-
-    # Unpack the bounding box coordinates
-    x, y, w, h = bbox
-
-    # The network width and height are used to normalize the coordinates.
-    # These should be the dimensions of the image as used by the network, usually the input layer dimensions.
-    _height = darknet_height
-    _width = darknet_width
-
-    # Normalize the coordinates by dividing by the width and height of the image.
-    # This converts the coordinates from a pixel value to a relative value based on the size of the image.
-    return x / _width, y / _height, w / _width, h / _height
-
-
-def convert2original(image, bbox):
-    """
-    Converts relative bounding box coordinates back to original (absolute) coordinates.
-
-    Parameters:
-    image (array): The original image array on which detection was performed.
-    bbox (tuple): A tuple containing the bounding box's relative coordinates (x, y, w, h)
-                  where x and y are the center of the box, and w and h are width and height.
-
-    Returns:
-    tuple: A tuple containing the bounding box's original (absolute) coordinates.
-    """
-
-    # First, convert relative coordinates (normalized) back to absolute coordinates.
-    # This is done by multiplying the relative coordinates by the actual image dimensions.
-    x, y, w, h = convert2relative(bbox)
-    image_h, image_w, __ = image.shape  # Get the height and width of the original image.
-
-    # Calculate the original x and y coordinates (top-left corner of the bounding box).
-    orig_x = int(x * image_w)
-    orig_y = int(y * image_h)
-
-    # Calculate the original width and height of the bounding box.
-    orig_width = int(w * image_w)
-    orig_height = int(h * image_h)
-
-    # The resulting bounding box in original image coordinates.
-    bbox_converted = (orig_x, orig_y, orig_width, orig_height)
-
-    return bbox_converted
-
-
-def convert4cropping(image, bbox):
-    """
-    Converts relative bounding box coordinates to absolute coordinates suitable for cropping.
-
-    Parameters:
-    image (array): The original image array on which detection was performed.
-    bbox (tuple): A tuple containing the bounding box's relative coordinates (x, y, w, h)
-                  where x and y are the center of the box, and w and h are width and height.
-
-    Returns:
-    tuple: A tuple containing the coordinates for cropping (left, top, right, bottom).
-    """
-
-    # Convert relative coordinates to absolute coordinates using image dimensions.
-    x, y, w, h = convert2relative(bbox)
-    image_h, image_w, __ = image.shape
-
-    # Calculate the absolute coordinates for the left, right, top, and bottom edges
-    # of the bounding box. These are used for cropping the image.
-    orig_left = int((x - w / 2.) * image_w)
-    orig_right = int((x + w / 2.) * image_w)
-    orig_top = int((y - h / 2.) * image_h)
-    orig_bottom = int((y + h / 2.) * image_h)
-
-    # Ensure that the coordinates do not exceed the image boundaries.
-    # This is important as attempting to crop outside the image dimensions can cause errors.
-    if orig_left < 0: orig_left = 0
-    if orig_right > image_w - 1: orig_right = image_w - 1
-    if orig_top < 0: orig_top = 0
-    if orig_bottom > image_h - 1: orig_bottom = image_h - 1
-
-    # The coordinates for cropping the image.
-    bbox_cropping = (orig_left, orig_top, orig_right, orig_bottom)
-
-    return bbox_cropping
-
-
 def signal_handler(sig, frame):
     """
     Handles a specific signal and stops the main loop.
@@ -236,7 +137,6 @@ def signal_handler(sig, frame):
         drawing_thread.join()
     if drawing_ocr_thread is not None:
         drawing_ocr_thread.join()
-
 
 def video_capture(frame_queue, darknet_image_queue):
     global is_running, frame_delay
@@ -270,7 +170,6 @@ def video_capture(frame_queue, darknet_image_queue):
     # Release the video source when the loop ends
     cap.release()
 
-
 def inference(darknet_image_queue, detections_queue):
     """
     Processes images using the Darknet YOLO framework for object detection.
@@ -301,7 +200,6 @@ def inference(darknet_image_queue, detections_queue):
     # Release the video source when the loop ends
     cap.release()
 
-
 def create_crops(frame_queue, detections_queue):
     """
     Create crops for each detection of license-plate.
@@ -316,8 +214,6 @@ def create_crops(frame_queue, detections_queue):
     global is_running
     random.seed(3)  # Ensure consistent colors for bounding boxes across runs
 
-
-
     while is_running and cap.isOpened():
         frame = frame_queue.get()  # Retrieve a frame from the queue
         detections = detections_queue.get()  # Retrieve detections for the frame
@@ -327,10 +223,10 @@ def create_crops(frame_queue, detections_queue):
         if frame is not None and frame.size > 0:
             # Adjust each detection to the original frame size and add to list
             for label, confidence, bbox in detections:
-                bbox_adjusted = convert2original(frame, bbox)
+                bbox_adjusted = darknet.convert2original(frame, bbox)
                 detections_adjusted.append((str(label), confidence, bbox_adjusted))
             
-            crops_resized = get_crops(detections_adjusted, frame)
+            crops_resized = darknet.get_crops(detections_adjusted, frame)
 
             ocr_items = (crops_resized, frame, detections_adjusted)
 
@@ -339,7 +235,6 @@ def create_crops(frame_queue, detections_queue):
     # Release resources
     cap.release()
     cv2.destroyAllWindows()
-
 
 def drawing_boxes_and_lincese_plate(plate_ocr_queue):
     """
@@ -362,14 +257,18 @@ def drawing_boxes_and_lincese_plate(plate_ocr_queue):
 
         cropsAndBbox, frame, detections_adjusted = plate_ocr_queue.get()
 
+        detection_count = 0
+
         for crop, bbox_adjusted in cropsAndBbox:
 
             height, width = crop.shape[:2]
 
             if crop is not None and crop.size > 0 and  width > 0 and height > 0: 
                 left, top, right, bottom = darknet.bbox2points(bbox_adjusted)  
-                frame = read_lincese_plate_by_ocr(frame, crop, detections_adjusted, left, top)
+                frame = darknet.read_lincese_plate_by_ocr(frame, crop, detections_adjusted[detection_count], left, top)
+                detection_count += 1
         
+
         if frame is not None:    
             if not args.dont_show:
                 cv2.imshow('Inference', frame)  # Display the frame
@@ -384,71 +283,6 @@ def drawing_boxes_and_lincese_plate(plate_ocr_queue):
             video.write(frame)
 
     video.release()
-            
-# Function to read license plate
-def read_lincese_plate_by_ocr(image, crop, detections_adjusted, left, top):
-
-    """
-    Return the frame with the license-plate has red
-
-    Parameters:
-    image: the current frame to write boxes and license-plate
-    crop: crop of lincese-plate.
-    detections_adjusted: the detection of lincese-plate (label, condifence, bbox)
-    left: position that start the letters of license-plate
-    top: position that start the letters of license-plate
-
-    This function return the final frame with the box of license-plate detected and ORC result unless
-    the average of OCR result is under 65% of condifence 
-    """
-    import cv2
-
-    result, confidences = darknet.plate_recognizer.run(crop, True)
-
-    average = np.mean(confidences)
-
-    if result is not None and average > 0.65:
-        # Draw bounding boxes on the frame    
-        image = darknet.draw_boxes(detections_adjusted, image, class_colors)                   
-        cv2.putText(image, result[0], (left, top - 20), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
-
-    return image
-
-# Function to create crops
-def get_crops(detections, image, scale_percent = 3):
-
-    """
-    Return the crops resized and in grey format for OCR with the corresponding bbox
-
-    Parameters:
-    detections: Queue from which to retrieve detections for each crops and their corresponding bbox.
-    image: frames.
-    scale_percent: Scale in percent to resize the crops.
-
-    This function return the crops resized and in grey format.
-    """
-    import cv2
-
-    crops_resized = []
-
-    for label, confidence, bbox_adjusted in detections:
-
-        left, top, right, bottom = darknet.bbox2points(bbox_adjusted)  
-
-        height, width = image.shape[:2]
-
-        width = int((width  * scale_percent / 100))
-        height = int((height  * scale_percent / 100))   
-
-        crop = image[top-5:bottom+5, left-5:right+5]
-
-        if crop is not None and crop.size > 0:
-            image_resized = cv2.resize(crop, (width, height), interpolation=cv2.INTER_CUBIC)
-            image_grey = cv2.cvtColor(image_resized, cv2.COLOR_BGR2GRAY)
-            crops_resized.append((image_grey, bbox_adjusted))
-
-    return crops_resized
-
 
 if __name__ == '__main__':
     """
@@ -501,4 +335,3 @@ if __name__ == '__main__':
     sys.stderr.flush()
     sys.stdout.close()
     sys.stderr.close()
-

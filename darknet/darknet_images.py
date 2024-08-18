@@ -152,11 +152,28 @@ def image_detection(image_or_path, network, class_names, class_colors, thresh, i
     # Free the memory used by the Darknet IMAGE object
     darknet.free_image(darknet_image)
 
-    # Draw bounding boxes and labels on the image based on the detected objects
-    image_with_boxes = darknet.draw_boxes(detections, image_resized, class_colors)
+    detections_adjusted = []
+    
+    if image_resized is not None and image_resized.size > 0:
+        for label, confidence, bbox in detections:
+            detections_adjusted.append((str(label), confidence, bbox))
+
+        crops_resized = darknet.get_crops(detections_adjusted, image_resized)
+
+        detection_count = 0
+
+        for crop, bbox_adjusted in crops_resized:
+            
+            height, width = crop.shape[:2]
+
+            if crop is not None and crop.size > 0 and  width > 0 and height > 0: 
+                left, top, right, bottom = darknet.bbox2points(bbox_adjusted)                  
+                image_resized = darknet.read_lincese_plate_by_ocr(image_resized, crop, detections_adjusted[detection_count], left, top)
+                detection_count += 1
+
 
     # Convert the image back to BGR color space (OpenCV format) and return it along with detections
-    return cv2.cvtColor(image_with_boxes, cv2.COLOR_BGR2RGB), detections
+    return cv2.cvtColor(image_resized, cv2.COLOR_BGR2RGB), detections
 
 # This function takes an image (either as a file path or an image array), a Darknet network,
 # class names, class colors, and a detection threshold, and returns the image with bounding boxes

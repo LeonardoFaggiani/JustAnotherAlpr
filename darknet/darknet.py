@@ -23,7 +23,12 @@ from ctypes import *
 import os
 import hashlib
 import numpy as np
+import re
 from fast_plate_ocr import ONNXPlateRecognizer
+
+# Global variable
+colors_network = None
+network = None
 
 # Define a structure to represent a bounding box with (x, y, width, height)
 class BOX(Structure):
@@ -85,7 +90,100 @@ def bbox2points(bbox):
     ymax = int(round(y + (h / 2)))
     return xmin, ymin, xmax, ymax
 
+def convert2relative(bbox):
+    """
+    Converts bounding box coordinates from absolute to relative values.
+    In YOLO, relative coordinates are used where the dimensions of the image are normalized to a range of 0 to 1.
 
+    Parameters:
+    bbox (tuple): A tuple containing the bounding box's absolute coordinates in the format (x, y, w, h).
+                  Here, x and y represent the center of the box, while w and h are its width and height.
+
+    Returns:
+    tuple: A tuple containing the bounding box's relative coordinates.
+    """
+
+    # Unpack the bounding box coordinates
+    x, y, w, h = bbox
+
+    # The network width and height are used to normalize the coordinates.
+    # These should be the dimensions of the image as used by the network, usually the input layer dimensions.
+
+    global network
+
+    _height = network_height(network)
+    _width = network_width(network)
+
+    # Normalize the coordinates by dividing by the width and height of the image.
+    # This converts the coordinates from a pixel value to a relative value based on the size of the image.
+    return x / _width, y / _height, w / _width, h / _height
+
+def convert2original(image, bbox):
+    """
+    Converts relative bounding box coordinates back to original (absolute) coordinates.
+
+    Parameters:
+    image (array): The original image array on which detection was performed.
+    bbox (tuple): A tuple containing the bounding box's relative coordinates (x, y, w, h)
+                  where x and y are the center of the box, and w and h are width and height.
+
+    Returns:
+    tuple: A tuple containing the bounding box's original (absolute) coordinates.
+    """
+
+    # First, convert relative coordinates (normalized) back to absolute coordinates.
+    # This is done by multiplying the relative coordinates by the actual image dimensions.
+    x, y, w, h = convert2relative(bbox)
+    image_h, image_w, __ = image.shape  # Get the height and width of the original image.
+
+    # Calculate the original x and y coordinates (top-left corner of the bounding box).
+    orig_x = int(x * image_w)
+    orig_y = int(y * image_h)
+
+    # Calculate the original width and height of the bounding box.
+    orig_width = int(w * image_w)
+    orig_height = int(h * image_h)
+
+    # The resulting bounding box in original image coordinates.
+    bbox_converted = (orig_x, orig_y, orig_width, orig_height)
+
+    return bbox_converted
+
+def convert4cropping(image, bbox):
+    """
+    Converts relative bounding box coordinates to absolute coordinates suitable for cropping.
+
+    Parameters:
+    image (array): The original image array on which detection was performed.
+    bbox (tuple): A tuple containing the bounding box's relative coordinates (x, y, w, h)
+                  where x and y are the center of the box, and w and h are width and height.
+
+    Returns:
+    tuple: A tuple containing the coordinates for cropping (left, top, right, bottom).
+    """
+
+    # Convert relative coordinates to absolute coordinates using image dimensions.
+    x, y, w, h = convert2relative(bbox)
+    image_h, image_w, __ = image.shape
+
+    # Calculate the absolute coordinates for the left, right, top, and bottom edges
+    # of the bounding box. These are used for cropping the image.
+    orig_left = int((x - w / 2.) * image_w)
+    orig_right = int((x + w / 2.) * image_w)
+    orig_top = int((y - h / 2.) * image_h)
+    orig_bottom = int((y + h / 2.) * image_h)
+
+    # Ensure that the coordinates do not exceed the image boundaries.
+    # This is important as attempting to crop outside the image dimensions can cause errors.
+    if orig_left < 0: orig_left = 0
+    if orig_right > image_w - 1: orig_right = image_w - 1
+    if orig_top < 0: orig_top = 0
+    if orig_bottom > image_h - 1: orig_bottom = image_h - 1
+
+    # The coordinates for cropping the image.
+    bbox_cropping = (orig_left, orig_top, orig_right, orig_bottom)
+
+    return bbox_cropping
 
 def class_colors(names):
     """
@@ -116,14 +214,17 @@ def load_network(config_file, data_file, weights, batch_size=1):
         class_names
         class_colors
     """
+    global colors_network
+    global network
+
     network = load_net_custom(
         config_file.encode("ascii"),
         weights.encode("ascii"), 0, batch_size)
     metadata = load_meta(data_file.encode("ascii"))
     class_names = [metadata.names[i].decode("ascii") for i in range(metadata.classes)]
     colors = class_colors(class_names)
+    colors_network = colors
     return network, class_names, colors
-
 
 # Function to print detected objects and their confidence scores
 def print_detections(detections, coordinates=False):
@@ -146,12 +247,12 @@ def print_detections(detections, coordinates=False):
             print("{}: {}%".format(label, confidence))
 
 # Function to draw bounding boxes on an image
-def draw_boxes(detections, image, colors):
+def draw_boxes(detection, image, colors):
     """
     Draw bounding boxes on an image.
 
     Args:
-        detections: List of detected objects, each represented as (label, confidence, bbox).
+        detection: A detected object, represented as (label, confidence, bbox).
         image: Input image.
         colors: Dictionary of colors for each class label.
 
@@ -161,14 +262,14 @@ def draw_boxes(detections, image, colors):
     
     import cv2
     
-    for label, confidence, bbox in detections:
-        left, top, right, bottom = bbox2points(bbox)
+    label, confidence, bbox = detection
+    
+    left, top, right, bottom = bbox2points(bbox)
 
-        cv2.rectangle(image, (left, top), (right, bottom), colors[label], 1)
-        cv2.putText(image, "{} [{:.2f}]".format(label, float(confidence)), (left, top - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colors[label], 2)
+    cv2.rectangle(image, (left, top), (right, bottom), colors[label], 1)
+    cv2.putText(image, "{} [{:.2f}]".format(label, float(confidence)), (left, top - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colors[label], 2)
         
     return image
-
 
 # Function to decode detection results and format confidence scores
 def decode_detection(detections):
@@ -253,7 +354,6 @@ def non_max_suppression_fast(detections, overlap_thresh):
     # Return only the bounding boxes that were picked using the integer data type
     return [detections[i] for i in pick]
 
-
 # Function to remove all classes with 0% confidence within the detection
 def remove_negatives(detections, class_names, num):
     """
@@ -326,7 +426,88 @@ def detect_image(network, class_names, image, thresh=.5, hier_thresh=.5, nms=.45
     free_detections(detections, num)
     return sorted(predictions, key=lambda x: x[1])
 
+# Function to read license plate
+def read_lincese_plate_by_ocr(image, crop, detection_adjusted, left, top):
+    """
+    Return the frame with the license-plate has red
 
+    Parameters:
+    image: the current frame to write boxes and license-plate
+    crop: crop of lincese-plate.
+    detection_adjusted: the detection of lincese-plate (label, condifence, bbox)
+    left: position that start the letters of license-plate
+    top: position that start the letters of license-plate
+
+    This function return the final frame with the box of license-plate detected and ORC result unless
+    the average of OCR result is under 65% of condifence 
+    """
+    import cv2
+    
+    global colors_network
+
+    result, confidences = plate_recognizer.run(crop, True)
+
+    print(result, confidences)
+
+    average = np.mean(confidences)
+
+    if result is not None and average > 0.65:
+        # Draw bounding boxes on the frame
+        image = draw_boxes(detection_adjusted, image, colors_network)
+        cv2.putText(image, validate_and_correct_format_license_plate(result[0]), (left, top - 20), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
+
+    return image
+
+# Function to create crops
+def get_crops(detections, image, scale_percent = 3):
+    """
+    Return the crops resized and in grey format for OCR with the corresponding bbox
+
+    Parameters:
+    detections: Queue from which to retrieve detections for each crops and their corresponding bbox.
+    image: frames.
+    scale_percent: Scale in percent to resize the crops.
+
+    This function return the crops resized and in grey format.
+    """
+    import cv2
+
+    crops_resized = []
+
+    for label, confidence, bbox_adjusted in detections:
+
+        left, top, right, bottom = bbox2points(bbox_adjusted)  
+
+        height, width = image.shape[:2]
+
+        width = int((width  * scale_percent / 100))
+        height = int((height  * scale_percent / 100))   
+
+        crop = image[top-5:bottom+5, left-5:right+5]
+
+        if crop is not None and crop.size > 0:
+            image_resized = cv2.resize(crop, (width, height), interpolation=cv2.INTER_CUBIC)
+            image_grey = cv2.cvtColor(image_resized, cv2.COLOR_BGR2GRAY)
+            crops_resized.append((image_grey, bbox_adjusted))
+
+    return crops_resized
+
+# Function to valida Argentinian format license plate
+def validate_and_correct_format_license_plate(plate):
+    
+    # Regex to validate Argentian plate format
+    pattern = r'^[A-Z]{2}[0-9]{3}[A-Z]{2}$|^[A-Z]{3}[0-9]{3}_$'
+    
+    match = re.match(pattern, plate)
+    
+    if match:
+        # If match with the second format then remove '_'
+        if plate.endswith('_'):
+            plate = plate.replace('_', '')
+        return plate
+    else:
+        return 'Invalid'
+    
 # Platform-specific library path and initialization
 if os.name == "posix":
     libpath = "/usr/lib/libdarknet.so"

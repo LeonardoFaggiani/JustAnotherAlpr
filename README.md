@@ -51,6 +51,7 @@ License Plate Metrics
 * [x] Upload differents kind of images to train the model.
 * [x] Create Model
 * [x] Draw boxes in video streaming
-* [ ] OCR 🛠️ (In Progress)
-* [ ] Information of the owner of the vehicle license (Simulation)
+* [x] OCR
+* [ ] Information of the owner of the vehicle license (Simulation) 🛠️ (In Progress)
 * [ ] Move images to blob storage 
+* [ ] Improve model (motorbike license plate) 
