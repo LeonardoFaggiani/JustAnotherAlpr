@@ -4,14 +4,12 @@ from ctypes import *
 import random
 import os
 import cv2
-import time
 import darknet
 import argparse
 from threading import Thread, enumerate
 from queue import Queue
 import signal
 import sys
-import numpy as np
 
 # Global flag to control the execution of threads
 is_running = True
@@ -20,8 +18,8 @@ is_running = True
 capture_thread = None
 inference_thread = None
 drawing_thread = None
-plate_ocr_queue = None
-frame_delay = 20  # Delay in milliseconds (default is 30 for normal speed)
+drawing_ocr_thread = None
+frame_delay = 28  # Delay in milliseconds (default is 30 for normal speed)
 
 def parse_args():
     # Create an ArgumentParser object with a description for YOLO Object Detection.
@@ -32,7 +30,7 @@ def parse_args():
                         help="video source. If empty, uses webcam 0 stream")
 
     # Add argument for the output file name. Default is an empty string, indicating no file will be saved.
-    parser.add_argument("--out_filename", type=str, default="",
+    parser.add_argument("--out_filename", type=str, default=None,
                         help="inference video name. Not saved if empty")
 
     # Add argument for the path to the YOLO weights file. Default is set to 'yolov4.weights'.
@@ -103,24 +101,6 @@ def check_arguments_errors(args):
     if str2int(args.input) == str and not os.path.exists(args.input):
         raise(ValueError("Invalid video path {}".format(os.path.abspath(args.input))))
 
-def set_saved_video(input_video, output_video, size):
-    # Define the video codec using the FourCC code.
-    # 'MJPG' is used here which stands for Motion-JPEG codec.
-    # This codec is widely used and generally provides a good balance between quality and file size.
-    fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-
-    # Retrieve the frames per second (fps) from the input video.
-    # This is important to maintain the same temporal characteristics in the output video as the input.
-    fps = int(input_video.get(cv2.CAP_PROP_FPS))
-
-    # Create a VideoWriter object that will be used to write the output video.
-    # The parameters include the output file name, the codec (fourcc), the fps, and the frame size.
-    # The frame size is specified as a tuple (width, height), and it should match the frames being written.
-    video = cv2.VideoWriter(output_video, fourcc, fps, size)
-
-    # Return the VideoWriter object so it can be used to write frames to the output video file.
-    return video
-
 def signal_handler(sig, frame):
     """
     Handles a specific signal and stops the main loop.
@@ -139,8 +119,8 @@ def signal_handler(sig, frame):
         drawing_ocr_thread.join()
 
 def video_capture(frame_queue, darknet_image_queue):
-    global is_running, frame_delay
-
+    global is_running, frame_delay   
+        
     while is_running and cap.isOpened():
         ret, frame = cap.read()  # Read a frame from the video source
         if not ret:  # If no frame is captured, break the loop
@@ -219,7 +199,7 @@ def create_crops(frame_queue, detections_queue):
         detections = detections_queue.get()  # Retrieve detections for the frame
 
         detections_adjusted = []
-
+                
         if frame is not None and frame.size > 0:
             # Adjust each detection to the original frame size and add to list
             for label, confidence, bbox in detections:
@@ -246,12 +226,12 @@ def drawing_boxes_and_lincese_plate(plate_ocr_queue):
     This function continuously retrieves the queue of crops and their corresponding bbox,
     if an output filename is provided, it also writes the frames to a video file.
     """
-
     import cv2
     global is_running
 
     # Initialize video writer if an output filename is specified
-    video = set_saved_video(cap, args.out_filename, (video_width, video_height))
+    if args.out_filename is not None:
+        video = set_saved_video(cap, args.out_filename, (video_width, video_height))
 
     while is_running and cap.isOpened():
 
@@ -266,8 +246,7 @@ def drawing_boxes_and_lincese_plate(plate_ocr_queue):
             if crop is not None and crop.size > 0 and  width > 0 and height > 0: 
                 left, top, right, bottom = darknet.bbox2points(bbox_adjusted)  
                 frame = darknet.read_lincese_plate_by_ocr(frame, crop, detections_adjusted[detection_count], left, top)
-                detection_count += 1
-        
+                detection_count += 1        
 
         if frame is not None:    
             if not args.dont_show:
@@ -278,17 +257,36 @@ def drawing_boxes_and_lincese_plate(plate_ocr_queue):
                     is_running = False
                     break
         
-        # Write the frame to the output video file if specified
+            #Write the frame to the output video file if specified
         if args.out_filename is not None:
             video.write(frame)
+    
+    if args.out_filename is not None:
+        video.release()
+    
+def set_saved_video(input_video, output_video, size):
+    # Define the video codec using the FourCC code.
+    # 'MJPG' is used here which stands for Motion-JPEG codec.
+    # This codec is widely used and generally provides a good balance between quality and file size.
+    fourcc = cv2.VideoWriter_fourcc(*"MJPG")
 
-    video.release()
+    # Retrieve the frames per second (fps) from the input video.
+    # This is important to maintain the same temporal characteristics in the output video as the input.
+    fps = int(input_video.get(cv2.CAP_PROP_FPS))
+
+    # Create a VideoWriter object that will be used to write the output video.
+    # The parameters include the output file name, the codec (fourcc), the fps, and the frame size.
+    # The frame size is specified as a tuple (width, height), and it should match the frames being written.
+    video = cv2.VideoWriter(output_video, fourcc, fps, size)
+
+    # Return the VideoWriter object so it can be used to write frames to the output video file.
+    return video
 
 if __name__ == '__main__':
     """
     Main entry point of the script.
     """
-
+    
     # Register the signal handler for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
 
@@ -298,9 +296,7 @@ if __name__ == '__main__':
     # Set GPU, perform checks, load network as before
     darknet.set_gpu(args.gpu_index)
     check_arguments_errors(args)
-    network, class_names, class_colors = darknet.load_network(
-        args.config_file, args.data_file, args.weights, batch_size=1
-    )
+    network, class_names, class_colors = darknet.load_network(args.config_file, args.data_file, args.weights, batch_size=1)
     darknet_width = darknet.network_width(network)
     darknet_height = darknet.network_height(network)
     input_path = str2int(args.input)

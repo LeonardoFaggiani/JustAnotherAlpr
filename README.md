@@ -45,13 +45,13 @@ License Plate Metrics
 ![image](https://github.com/user-attachments/assets/10ce5c59-1d5c-4b39-89e9-5d13f6af41c6)
 
 
-
 ## TODO
 
 * [x] Upload differents kind of images to train the model.
 * [x] Create Model
 * [x] Draw boxes in video streaming
 * [x] OCR
-* [ ] Information of the owner of the vehicle license (Simulation) 🛠️ (In Progress)
-* [ ] Move images to blob storage 
+* [x] Information of the owner of the vehicle license (Simulation)
+* [ ] Move images to blob storage 🛠️ (In Progress)
+* [ ] Create GUI
 * [ ] Improve model (motorbike license plate) 

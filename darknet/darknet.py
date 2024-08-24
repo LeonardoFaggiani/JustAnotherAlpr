@@ -29,6 +29,7 @@ from fast_plate_ocr import ONNXPlateRecognizer
 # Global variable
 colors_network = None
 network = None
+ilegal_license_plates = []
 
 # Define a structure to represent a bounding box with (x, y, width, height)
 class BOX(Structure):
@@ -69,6 +70,12 @@ class IMAGE(Structure):
 class METADATA(Structure):
     _fields_ = [("classes", c_int),        # Number of classes
                 ("names", POINTER(c_char_p))]  # Pointer to class names
+    
+class IlegalPlate():
+    def __init__(self, plate, state, description):
+        self.plate = plate
+        self.state = state        
+        self.description = description
 
 # Function to get the width of a network
 def network_width(net):
@@ -444,19 +451,68 @@ def read_lincese_plate_by_ocr(image, crop, detection_adjusted, left, top):
     import cv2
     
     global colors_network
+    global ilegal_license_plates
 
     result, confidences = plate_recognizer.run(crop, True)
-
-    print(result, confidences)
 
     average = np.mean(confidences)
 
     if result is not None and average > 0.65:
-        # Draw bounding boxes on the frame
-        image = draw_boxes(detection_adjusted, image, colors_network)
-        cv2.putText(image, validate_and_correct_format_license_plate(result[0]), (left, top - 20), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
+        plate = validate_and_correct_format_license_plate(result[0])
+        if plate != "Invalid":
+            # Draw bounding boxes on the frame
+            image = draw_boxes(detection_adjusted, image, colors_network)
+            cv2.putText(image, plate, (left, top - 20), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
 
+            ilegal_plate = get_ilegal_plate_if_already_exists_in_memory(plate)
+            if(ilegal_plate == None):
+                row = get_ilegal_plate(plate)
+                if row != None:
+                    ilegal_plate = IlegalPlate(plate=row[1], state=row[2], description=row[3])
+                    ilegal_license_plates.append(ilegal_plate)
+
+            if(ilegal_plate != None):
+                cv2.putText(image, "{} ({})".format(ilegal_plate.state, ilegal_plate.description), (left, top - 50), cv2.FONT_ITALIC, 1, (165, 0, 255), 2)                    
+                
     return image
+
+# Funciton to check if already exists a ilegal plate in memory
+def get_ilegal_plate_if_already_exists_in_memory(plate):
+
+    """
+    Return the license plate that already exists like ilegal from memory otherwise return None
+
+    Parameters:
+    plate: license plate to find in memory
+
+    """
+
+    return next((x for x in ilegal_license_plates if x.plate == plate), None)
+
+# Function to find Ilegal plate from Database
+def get_ilegal_plate(plate):
+
+    """
+    Return the ilegal plate from database
+
+    Parameters:
+    plate: license plate to check if it's ilegal
+
+    """
+
+    path = os.path.dirname(os.path.abspath(__file__))
+
+    conexion = sqlite3.connect("{}/bd/plates.db".format(path))
+
+    cursor = conexion.cursor()
+    
+    query = cursor.execute("select id, plate, reason, comment from IlegalPlates where plate=?", (plate, ))
+    
+    row = query.fetchone()
+
+    conexion.close()
+
+    return row
 
 # Function to create crops
 def get_crops(detections, image, scale_percent = 3):
@@ -495,6 +551,15 @@ def get_crops(detections, image, scale_percent = 3):
 # Function to valida Argentinian format license plate
 def validate_and_correct_format_license_plate(plate):
     
+    """
+    Function to validate the current valid format of license plate in Argentina
+    the valid format are 'AAA 123', 'AA 123 AA'
+
+    Parameters:
+    plate: License plate to validate format
+    
+    """
+        
     # Regex to validate Argentian plate format
     pattern = r'^[A-Z]{2}[0-9]{3}[A-Z]{2}$|^[A-Z]{3}[0-9]{3}_$'
     
@@ -634,3 +699,29 @@ network_predict_batch.restype = POINTER(DETNUMPAIR)
 
 # Define plates OCR
 plate_recognizer = ONNXPlateRecognizer('argentinian-plates-cnn-model')
+
+# Create BD
+
+path = os.path.dirname(os.path.abspath(__file__))
+
+conexion = sqlite3.connect("{}/bd/plates.db".format(path))
+
+# Drop table 'IlegalPlates' if exists
+conexion.execute("""drop table if exists IlegalPlates;""")
+
+# Create table 'IlegalPlates' if not exists
+conexion.execute("""create table if not exists IlegalPlates (
+                          id integer primary key AUTOINCREMENT,
+                          plate text,
+                          reason text,
+                          comment text                          
+                    )""")
+
+#Insert IlegalPlates
+conexion.execute("insert into IlegalPlates(id,plate,reason,comment) values (?,?,?,?)", (1, "AB400UL","Arrest warrant", "Stolen vehicle on 13th street"))
+conexion.execute("insert into IlegalPlates(id,plate,reason,comment)values (?,?,?,?)", (2, "AC118XV","Arrest warrant", "Stolen vehicle on 12th street"))
+conexion.execute("insert into IlegalPlates(id,plate,reason,comment)values (?,?,?,?)", (3, "LSO885","Arrest warrant", "Stolen vehicle on 1th street"))
+
+conexion.commit()
+
+conexion.close()
