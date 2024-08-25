@@ -6,8 +6,9 @@ This is a proof of concept of how to train my own `YOLO` model to detect vehicle
 
 On the other hand, I used `Python` to draw and manipulate the steaming of the video.
 
-![Alt Text](./darknet/samples/LicensePlate.gif)
+The model was trained entirely with images of Argentine license plates (7200 images). If you want to obtain the images that were used to train your own model, you can download them [here.](https://leofstorage.blob.core.windows.net/my-personal-storage/argentinian-license-plates.rar)
 
+![Alt Text](./darknet/samples/LicensePlate.gif)
 
 Installation & Requirements
 ------------
@@ -52,6 +53,6 @@ License Plate Metrics
 * [x] Draw boxes in video streaming
 * [x] OCR
 * [x] Information of the owner of the vehicle license (Simulation)
-* [ ] Move images to blob storage 🛠️ (In Progress)
-* [ ] Create GUI
+* [x] Move images to blob storage
+* [ ] Create GUI with Tkinter 🛠️ (In Progress)
 * [ ] Improve model (motorbike license plate) 
