@@ -21,6 +21,9 @@ https://github.com/hank-ai/darknet
 
 Usage
 -----
+## UI
+Go to the root project and execute `python -m ui.menu`
+![Alt Text](./darknet/samples/UI-Sample.jpg)
 
 ## Video/Webcam/Images
 
