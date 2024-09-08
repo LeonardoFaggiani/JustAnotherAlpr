@@ -24,6 +24,7 @@ import os
 import hashlib
 import numpy as np
 import re
+import sqlite3
 from fast_plate_ocr import ONNXPlateRecognizer
 
 # Global variable

@@ -118,7 +118,7 @@ def signal_handler(sig, frame):
     if drawing_ocr_thread is not None:
         drawing_ocr_thread.join()
 
-def video_capture(frame_queue, darknet_image_queue):
+def video_capture():
     global is_running, frame_delay   
         
     while is_running and cap.isOpened():
@@ -131,21 +131,7 @@ def video_capture(frame_queue, darknet_image_queue):
         if key == ord('q'):
             is_running = False
 
-        # Convert the frame from BGR (OpenCV default) to RGB
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-        # Resize the frame to the dimensions expected by Darknet
-        frame_resized = cv2.resize(frame_rgb, (darknet_width, darknet_height), interpolation=cv2.INTER_LINEAR)
-
-        # Put the original frame in the frame queue
-        frame_queue.put(frame)
-
-        # Create a Darknet image from the resized frame
-        img_for_detect = darknet.make_image(darknet_width, darknet_height, 3)
-        darknet.copy_image_from_bytes(img_for_detect, frame_resized.tobytes())
-
-        # Put the Darknet image in the Darknet image queue
-        darknet_image_queue.put(img_for_detect)        
+        resize_and_save_in_queue(frame)
 
     # Release the video source when the loop ends
     cap.release()
@@ -282,6 +268,24 @@ def set_saved_video(input_video, output_video, size):
     # Return the VideoWriter object so it can be used to write frames to the output video file.
     return video
 
+def resize_and_save_in_queue(frame):
+            
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+    # Resize the frame to the dimensions expected by Darknet
+    frame_resized = cv2.resize(frame_rgb, (darknet_width, darknet_height), interpolation=cv2.INTER_LINEAR)
+
+    # Put the original frame in the frame queue
+    frame_queue.put(frame)
+
+    # Create a Darknet image from the resized frame
+    img_for_detect = darknet.make_image(darknet_width, darknet_height, 3)
+
+    darknet.copy_image_from_bytes(img_for_detect, frame_resized.tobytes())
+    # Put the Darknet image in the Darknet image queue
+    darknet_image_queue.put(img_for_detect)
+
+
 if __name__ == '__main__':
     """
     Main entry point of the script.
@@ -310,7 +314,7 @@ if __name__ == '__main__':
     detections_queue = Queue(maxsize=1)
 
     # Start threads and assign them to global variables
-    capture_thread = Thread(target=video_capture, args=(frame_queue, darknet_image_queue))
+    capture_thread = Thread(target=video_capture)
     inference_thread = Thread(target=inference, args=(darknet_image_queue, detections_queue))
     drawing_thread = Thread(target=create_crops, args=(frame_queue, detections_queue))
     drawing_ocr_thread = Thread(target=drawing_boxes_and_lincese_plate, args=(plate_ocr_queue,))
