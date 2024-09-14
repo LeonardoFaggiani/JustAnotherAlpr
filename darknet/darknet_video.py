@@ -231,7 +231,7 @@ def drawing_boxes_and_lincese_plate(plate_ocr_queue):
 
             if crop is not None and crop.size > 0 and  width > 0 and height > 0: 
                 left, top, right, bottom = darknet.bbox2points(bbox_adjusted)  
-                frame = darknet.read_lincese_plate_by_ocr(frame, crop, detections_adjusted[detection_count], left, top)
+                frame, plate = darknet.read_lincese_plate_by_ocr(frame, crop, detections_adjusted[detection_count], left, top)
                 detection_count += 1        
 
         if frame is not None:    

@@ -1,47 +1,62 @@
 import sys
 from time import time
 import tkinter as tk
-from turtle import width
 import cv2
 import queue
 import time
 
 from tkinter import filedialog
 from PIL import Image, ImageTk
-from sympy import false
 from darknet import darknet
 from queue import Queue
 from threading import Thread
 
-# Global flag to control the execution of threads
+from ui import LicensePlateScrollList
+
 is_running = True
 detection_images_thread = None
 drawing_thread = None
 drawing_ocr_thread = None
 show_frame_processed_thread = None
-
+cap = None
+videoStreamingBox = None
+licensePlateScrollBar = None
+fpsBox = None
+btnStop = None
+menu:None
+ilegal_license_plates = []
+    
 def load_video():
 
     global cap
     global is_running
-    
+    global btnStop
+    global btnStreamingVideo
+
     video_path = filedialog.askopenfilename(filetypes = [("all video format", ".avi") ])
-    cap = cv2.VideoCapture(video_path)
-    is_running = True
-    
-    if(not detection_images_thread.is_alive()):
-        detection_images_thread.start()
+        
+    if video_path != "":    
+        cap = cv2.VideoCapture(video_path)
+        is_running = True
+        videoStreamingBox.setvar("ClearVideoBox", "")
+        btnStreamingVideo.config(state="disabled")
+        btnStop.config(state="active")
+                
+        create_threads()
+        
+        if(not detection_images_thread.is_alive()):
+            detection_images_thread.start()
 
-    if(not drawing_thread.is_alive()):
-        drawing_thread.start()
+        if(not drawing_thread.is_alive()):
+            drawing_thread.start()
 
-    if(not drawing_ocr_thread.is_alive()):
-        drawing_ocr_thread.start()
+        if(not drawing_ocr_thread.is_alive()):
+            drawing_ocr_thread.start()
 
-    if(not show_frame_processed_thread.is_alive()):
-        show_frame_processed_thread.start()
+        if(not show_frame_processed_thread.is_alive()):
+            show_frame_processed_thread.start()
 
-    play_video()
+        play_video()
 
 def play_video():
 
@@ -53,7 +68,6 @@ def play_video():
         videoStreamingBox.after(30, play_video)
             
     if(not ret):
-        print("www")
         stop_video()
 
 def resize_and_save_in_queue(frame):
@@ -130,9 +144,15 @@ def drawing_boxes_and_lincese_plate(plate_ocr_queue):
                 
                 for crop, bbox_adjusted in cropsAndBbox:
                     height, width = crop.shape[:2]
-                    if crop is not None and crop.size > 0 and  width > 0 and height > 0:
+                    if crop is not None and crop.size > 0 and  width > 0 and height > 0:                        
                         left, top, right, bottom = darknet.bbox2points(bbox_adjusted)
-                        frame = darknet.read_lincese_plate_by_ocr(frame, crop, detections_adjusted[detection_count], left, top)
+                        
+                        frame, plate = darknet.read_lincese_plate_by_ocr(frame, crop, detections_adjusted[detection_count], left, top)
+                        
+                        if plate != "Invalid" and not already_exists_license_plate(plate):
+                            licensePlateScrollBar.add_item(crop, plate)
+                            ilegal_license_plates.append(plate)
+                        
                         detection_count += 1
 
                 # Put the processed frame in the queue
@@ -141,6 +161,9 @@ def drawing_boxes_and_lincese_plate(plate_ocr_queue):
                 continue
         else:
             time.sleep(0.01)
+
+def already_exists_license_plate(plate):
+    return next((True for x in ilegal_license_plates if x == plate), False)
 
 def show_frame_processed():
     
@@ -159,14 +182,14 @@ def show_frame_processed():
             img.thumbnail((1200, 800)) 
             img_tk = ImageTk.PhotoImage(image=img)
             
-            videoStreamingBox.create_image(0, 0, anchor="nw", image=img_tk)
-            videoStreamingBox.image = img_tk
-        
-            # Calculate FPS
-            fps = int(1 / (time.time() - prev_time))
-            #print("FPS: {}".format(fps))  # Print the FPS
-                        
-            fpsBox.config(text="FPS: {}".format(fps), foreground="red")
+            if videoStreamingBox.getvar("ClearVideoBox") != "Clean":
+                videoStreamingBox.create_image(0, 0, anchor="nw", image=img_tk)
+                videoStreamingBox.image = img_tk
+            
+                # Calculate FPS
+                fps = int(1 / (time.time() - prev_time))
+                            
+                fpsBox.config(text="FPS: {}".format(fps), foreground="green", font=16)
                
         except queue.Empty:
             continue
@@ -175,30 +198,50 @@ def stop_video():
         
     global is_running
     global videoStreamingBox
-    global fpsBox
-          
-    import cv2
     
-    cap.release()    
+    import cv2
+    is_running = False
+    cap.release()
+    cv2.destroyAllWindows()
+        
+    videoStreamingBox.after(200, clear_video_box())
+    
+def clear_video_box():
+    
+    global videoStreamingBox
+    global ilegal_license_plates
+    global fpsBox
+    global menu
+    
     videoStreamingBox.delete("all")
     videoStreamingBox.image = None
+    videoStreamingBox.setvar("ClearVideoBox", "Clean")
     fpsBox.configure(text='')
-    is_running = False
-    cv2.destroyAllWindows()
+    btnStop.config(state="disabled")
+    btnStreamingVideo.config(state="active")    
+    ilegal_license_plates = []    
+    licensePlateScrollBar.clear()
+    
+    menu.update_idletasks()
+    menu.update()        
 
 def create_main_gui():
 
+    global menu
+    
     splash_root.destroy()
     
     menu = tk.Tk()
 
     tk.Wm.wm_title(menu, "Main menu")
-    menu.minsize(1200, 800)
+    menu.wm_resizable(False, False)
 
     frame_main = tk.Frame(menu)
     frame_main.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+    create_video_canvas(frame_main)    
     
-    create_video_canvas(frame_main)
+    create_license_plate_scrollbar(frame_main)
     
     create_buttons(frame_main)
     
@@ -206,18 +249,28 @@ def create_main_gui():
 
     menu.mainloop()
     
-def create_video_canvas(frame_main):        
+def create_video_canvas(frame_main):
     
     global videoStreamingBox
     global fpsBox
-    
-    videoStreamingBox = tk.Canvas(frame_main, width=1200, height=800, bg="#c3c1c1")
-    videoStreamingBox.grid(row=0, column=0, columnspan=2)
+        
+    videoStreamingBox = tk.Canvas(frame_main, width=1200, height=650, bg="#c3c1c1")
+    videoStreamingBox.grid(row=0, column=0, columnspan=2, sticky="n")
+    videoStreamingBox.setvar("ClearVideoBox", "")
     
     fpsBox = tk.Label(frame_main, justify="left", width=20, height=2)
-    fpsBox.grid(row=2, column=0, columnspan=2, pady=10, sticky="w")
+    fpsBox.grid(row=2, column=0, columnspan=2, pady=10)
+    
+def create_license_plate_scrollbar(frame_main):
+    global licensePlateScrollBar
+    
+    licensePlateScrollBar = LicensePlateScrollList.Scroll(frame_main)
+    licensePlateScrollBar.grid(row=0, column=2, columnspan=2, sticky="n")
     
 def create_buttons(frame_main):
+    
+    global btnStop
+    global btnStreamingVideo
     
     button_frame = tk.Frame(frame_main)
     button_frame.grid(row=3, column=0, columnspan=2, pady=20)
@@ -225,8 +278,21 @@ def create_buttons(frame_main):
     btnStreamingVideo = tk.Button(button_frame, text="Select a video", width=15, command=load_video)
     btnStreamingVideo.grid(row=0, column=0, padx=10)
 
-    btnStop = tk.Button(button_frame, text="Stop", width=15, command=stop_video)
+    btnStop = tk.Button(button_frame, text="Stop", width=15, command=stop_video, state="disabled")
     btnStop.grid(row=0, column=1, padx=10)
+    
+def create_threads():
+    
+    global detection_images_thread
+    global drawing_thread
+    global drawing_ocr_thread
+    global show_frame_processed_thread
+
+    # Start threads and assign them to global variables
+    detection_images_thread = Thread(target=detections_process, args=(darknet_image_queue, detections_queue))    
+    drawing_thread = Thread(target=create_crops, args=(frame_queue, detections_queue))    
+    drawing_ocr_thread = Thread(target=drawing_boxes_and_lincese_plate, args=(plate_ocr_queue,))    
+    show_frame_processed_thread = Thread(target=show_frame_processed)
 
 def center_on_screen(win):
 
@@ -242,15 +308,11 @@ def center_on_screen(win):
     y = win.winfo_screenheight() // 2 - win_height // 2
     win.geometry('{}x{}+{}+{}'.format(width, height, x, y))
 
-
 if __name__ == '__main__':
     """
     Main entry point of the script.
     """
-    cap = None
-    videoStreamingBox = None
-    fpsBox = None
-    
+        
     network, class_names, class_colors = darknet.load_network("./nn/license-plate/license-plate.cfg", "./nn/license-plate/license-plate.data", "./nn/license-plate/license-plate.weights", batch_size=1)
     darknet_width = darknet.network_width(network)
     darknet_height = darknet.network_height(network)
@@ -261,23 +323,18 @@ if __name__ == '__main__':
     darknet_image_queue = Queue()
     detections_queue = Queue()
     frame_realtime_queue = Queue()
-    #maxsize=1
-    # Start threads and assign them to global variables
-    detection_images_thread = Thread(target=detections_process, args=(darknet_image_queue, detections_queue))    
-    drawing_thread = Thread(target=create_crops, args=(frame_queue, detections_queue))    
-    drawing_ocr_thread = Thread(target=drawing_boxes_and_lincese_plate, args=(plate_ocr_queue,))    
-    show_frame_processed_thread = Thread(target=show_frame_processed)
-
+    
+    create_threads()
+    
     splash_root = tk.Tk()
-    splash_label = tk.Label(splash_root, text="Welcome to JustAnotherAlpr GUI", font=16)
+    splash_label = tk.Label(splash_root, text="JustAnotherAlpr GUI", font=16)
     splash_label.pack(anchor="center", pady=40, padx=40)
     splash_root.overrideredirect(True)
     splash_root.attributes("-alpha", 0.8)
 
     center_on_screen(splash_root)
 
-    splash_root.after(200, create_main_gui)
-
+    splash_root.after(2000, create_main_gui)
     splash_root.mainloop()
 
     # Flush and close standard outputs

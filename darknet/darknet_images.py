@@ -168,7 +168,7 @@ def image_detection(image_or_path, network, class_names, class_colors, thresh, i
 
             if crop is not None and crop.size > 0 and  width > 0 and height > 0: 
                 left, top, right, bottom = darknet.bbox2points(bbox_adjusted)                  
-                image_resized = darknet.read_lincese_plate_by_ocr(image_resized, crop, detections_adjusted[detection_count], left, top)
+                image_resized, plate = darknet.read_lincese_plate_by_ocr(image_resized, crop, detections_adjusted[detection_count], left, top)
                 detection_count += 1
 
 

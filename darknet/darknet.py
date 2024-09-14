@@ -453,7 +453,7 @@ def read_lincese_plate_by_ocr(image, crop, detection_adjusted, left, top):
     
     global colors_network
     global ilegal_license_plates
-
+    plate = "Invalid"
     result, confidences = plate_recognizer.run(crop, True)
 
     average = np.mean(confidences)
@@ -475,11 +475,10 @@ def read_lincese_plate_by_ocr(image, crop, detection_adjusted, left, top):
             if(ilegal_plate != None):
                 cv2.putText(image, "{} ({})".format(ilegal_plate.state, ilegal_plate.description), (left, top - 50), cv2.FONT_ITALIC, 1, (165, 0, 255), 2)                    
                 
-    return image
+    return image, plate
 
 # Funciton to check if already exists a ilegal plate in memory
 def get_ilegal_plate_if_already_exists_in_memory(plate):
-
     """
     Return the license plate that already exists like ilegal from memory otherwise return None
 
@@ -487,12 +486,10 @@ def get_ilegal_plate_if_already_exists_in_memory(plate):
     plate: license plate to find in memory
 
     """
-
     return next((x for x in ilegal_license_plates if x.plate == plate), None)
 
 # Function to find Ilegal plate from Database
 def get_ilegal_plate(plate):
-
     """
     Return the ilegal plate from database
 
@@ -550,8 +547,7 @@ def get_crops(detections, image, scale_percent = 3):
     return crops_resized
 
 # Function to valida Argentinian format license plate
-def validate_and_correct_format_license_plate(plate):
-    
+def validate_and_correct_format_license_plate(plate):    
     """
     Function to validate the current valid format of license plate in Argentina
     the valid format are 'AAA 123', 'AA 123 AA'
