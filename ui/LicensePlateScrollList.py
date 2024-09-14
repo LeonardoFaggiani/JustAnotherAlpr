@@ -44,6 +44,15 @@ class Scroll(tk.Frame):
             self.scrollbar.pack_forget()
             
     def clear(self):
-        self.items.clear()        
-        self.scrollbar.pack_forget()
+        "Delete all items of list"
+        
+        for item_canvas in self.items:
+            item_canvas.delete("all")
+            item_canvas.pack_forget()
+        
+        self.items.clear()
+
+        # Restart the scrollBar
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        self.scrollbar.pack_forget()  # Hide the scrollbar if it doenst have items
                 
