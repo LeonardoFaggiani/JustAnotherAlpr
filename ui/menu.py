@@ -11,7 +11,7 @@ from darknet import darknet
 from queue import Queue
 from threading import Thread
 
-from ui import LicensePlateScrollList
+from ui import license_plate_scroll_list, video_box, video_controls
 
 is_running = True
 detection_images_thread = None
@@ -23,24 +23,23 @@ videoStreamingBox = None
 licensePlateScrollBar = None
 fpsBox = None
 btnStop = None
+btnStreamingVideo = None
 menu:None
 ilegal_license_plates = []
-    
+
 def load_video():
 
     global cap
     global is_running
-    global btnStop
-    global btnStreamingVideo
-
+    
     video_path = filedialog.askopenfilename(filetypes = [("all video format", ".avi") ])
         
     if video_path != "":    
         cap = cv2.VideoCapture(video_path)
         is_running = True
-        videoStreamingBox.setvar("ClearVideoBox", "")
-        btnStreamingVideo.config(state="disabled")
-        btnStop.config(state="active")
+        videoStreamingBox.set_status_video_box("Initial")
+        btnStreamingVideo.disable()
+        btnStop.enable()
                 
         create_threads()
         
@@ -65,7 +64,7 @@ def play_video():
     if ret is not None and frame is not None:
         frame_realtime_queue.put(frame)
         resize_and_save_in_queue(frame)
-        videoStreamingBox.after(30, play_video)
+        videoStreamingBox.schedule_playback(30, play_video)
             
     if(not ret):
         stop_video()
@@ -178,17 +177,11 @@ def show_frame_processed():
             
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            img = Image.fromarray(frame)
-            img.thumbnail((1200, 800)) 
-            img_tk = ImageTk.PhotoImage(image=img)
+            videoStreamingBox.update_frame(frame)
             
-            if videoStreamingBox.getvar("ClearVideoBox") != "Clean":
-                videoStreamingBox.create_image(0, 0, anchor="nw", image=img_tk)
-                videoStreamingBox.image = img_tk
-            
+            if(videoStreamingBox.get_status_video_box() != "Initial"):
                 # Calculate FPS
                 fps = int(1 / (time.time() - prev_time))
-                            
                 fpsBox.config(text="FPS: {}".format(fps), foreground="green", font=16)
                
         except queue.Empty:
@@ -197,30 +190,28 @@ def show_frame_processed():
 def stop_video():
         
     global is_running
-    global videoStreamingBox
     
     import cv2
     is_running = False
     cap.release()
-    cv2.destroyAllWindows()
-        
-    videoStreamingBox.after(200, clear_video_box())
+    cv2.destroyAllWindows()            
+    clear_video_box()
     
 def clear_video_box():
-    
-    global videoStreamingBox
+        
     global ilegal_license_plates
     global fpsBox
     global menu
     
-    videoStreamingBox.delete("all")
-    videoStreamingBox.image = None
-    videoStreamingBox.setvar("ClearVideoBox", "Clean")
-    fpsBox.configure(text='')
-    btnStop.config(state="disabled")
-    btnStreamingVideo.config(state="active")    
-    ilegal_license_plates = []    
+    ilegal_license_plates = []
+        
+    btnStop.disable()
+    btnStreamingVideo.enable()  
+    
+    videoStreamingBox.clear()
     licensePlateScrollBar.clear()
+    
+    fpsBox.configure(text='')
     
     menu.update_idletasks()
     menu.update()        
@@ -253,33 +244,29 @@ def create_video_canvas(frame_main):
     
     global videoStreamingBox
     global fpsBox
-        
-    videoStreamingBox = tk.Canvas(frame_main, width=1200, height=650, bg="#c3c1c1")
-    videoStreamingBox.grid(row=0, column=0, columnspan=2, sticky="n")
-    videoStreamingBox.setvar("ClearVideoBox", "")
+
+    videoStreamingBox = video_box.Video(frame_main)
     
-    fpsBox = tk.Label(frame_main, justify="left", width=20, height=2)
-    fpsBox.grid(row=2, column=0, columnspan=2, pady=10)
+    fpsBox = tk.Label(frame_main, width=20, height=2)
+    fpsBox.grid(row=1, column=0, pady=10, sticky="w")
     
 def create_license_plate_scrollbar(frame_main):
     global licensePlateScrollBar
     
-    licensePlateScrollBar = LicensePlateScrollList.Scroll(frame_main)
+    licensePlateScrollBar = license_plate_scroll_list.Scroll(frame_main)
     licensePlateScrollBar.grid(row=0, column=2, columnspan=2, sticky="n")
     
 def create_buttons(frame_main):
     
     global btnStop
-    global btnStreamingVideo
+    global btnStreamingVideo    
     
     button_frame = tk.Frame(frame_main)
     button_frame.grid(row=3, column=0, columnspan=2, pady=20)
 
-    btnStreamingVideo = tk.Button(button_frame, text="Select a video", width=15, command=load_video)
-    btnStreamingVideo.grid(row=0, column=0, padx=10)
-
-    btnStop = tk.Button(button_frame, text="Stop", width=15, command=stop_video, state="disabled")
-    btnStop.grid(row=0, column=1, padx=10)
+    btnStreamingVideo = video_controls.Button(button_frame, "Select a video", 0, 0, load_video)
+    btnStop = video_controls.Button(button_frame, "Stop", 0, 1, stop_video)
+    btnStop.disable()
     
 def create_threads():
     
