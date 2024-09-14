@@ -1,4 +1,2 @@
-darknet/__pycache__/darknet.cpython-312.pyc
-darknet/__pycache__/__init__.cpython-312.pyc
-ui/__pycache__/menu.cpython-312.pyc
-ui/__pycache__/__init__.cpython-312.pyc
+darknet/__pycache__/
+__pycache__/
