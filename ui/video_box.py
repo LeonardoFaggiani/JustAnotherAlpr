@@ -19,8 +19,8 @@ class Video:
             self.video_streaming_box.image = img_tk
             
     def clear(self):        
-        self.video_streaming_box .delete("all")
-        self.video_streaming_box .image = None
+        self.video_streaming_box.delete("all")
+        self.video_streaming_box.image = None
         self.set_status_video_box("Clean")
         
     def set_status_video_box(self, status):        

@@ -6,7 +6,10 @@ class Scroll(tk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
         
-        self.canvas = tk.Canvas(self, bg="#c3c1c1", width=180, height=500)
+        self.title_label = tk.Label(self, text="Detections", font=("Arial", 12, "bold"))
+        self.title_label.pack(side="top", pady=10)
+        
+        self.canvas = tk.Canvas(self, bg="#c3c1c1", width=180, height=500, bd=1, relief="solid")        
         self.scrollable_frame = ttk.Frame(self.canvas)
         
         self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
@@ -16,19 +19,21 @@ class Scroll(tk.Frame):
         self.canvas.pack(side="left", fill="both", expand=True)
         
         self.scrollable_frame.bind("<Configure>",lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
-
-        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+                        
         self.items = []
 
     def add_item(self, crop, plate):
         "Add a item to list"
         
+        self.createFrameIfDoesntExists()
+        
         img = Image.fromarray(crop)
         img.thumbnail((150, 50))
         img_tk = ImageTk.PhotoImage(image=img)
         
-        item_canvas = tk.Canvas(self.scrollable_frame, width=180, height=50)
+        item_canvas = tk.Canvas(self.scrollable_frame, width=175, height=50)
         item_canvas.create_image(10, 10, anchor="nw", image=img_tk)        
         item_canvas.image = img_tk
         item_canvas.pack(fill="x", pady=5)
@@ -45,7 +50,7 @@ class Scroll(tk.Frame):
             
     def clear(self):
         "Delete all items of list"
-        
+                
         for item_canvas in self.items:
             item_canvas.delete("all")
             item_canvas.pack_forget()
@@ -55,4 +60,13 @@ class Scroll(tk.Frame):
         # Restart the scrollBar
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         self.scrollbar.pack_forget()  # Hide the scrollbar if it doenst have items
-                
+        
+        if not self.scrollable_frame is None:
+            self.scrollable_frame.destroy()
+            self.scrollable_frame = None
+        
+    def createFrameIfDoesntExists(self):        
+        if self.scrollable_frame is None:
+            self.scrollable_frame = ttk.Frame(self.canvas)
+            self.scrollable_frame.bind("<Configure>",lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))        
+            self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
