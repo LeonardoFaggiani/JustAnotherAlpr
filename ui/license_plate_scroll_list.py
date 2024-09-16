@@ -26,7 +26,7 @@ class Scroll(tk.Frame):
 
     def add_item(self, crop, plate):
         "Add a item to list"
-        
+                
         self.createFrameIfDoesntExists()
         
         img = Image.fromarray(crop)
@@ -52,6 +52,7 @@ class Scroll(tk.Frame):
         "Delete all items of list"
                 
         for item_canvas in self.items:
+            item_canvas.image = None
             item_canvas.delete("all")
             item_canvas.pack_forget()
         
