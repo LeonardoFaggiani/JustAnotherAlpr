@@ -57,5 +57,5 @@ License Plate Metrics
 * [x] OCR
 * [x] Information of the owner of the vehicle license (Simulation)
 * [x] Move images to blob storage
-* [ ] Create GUI with Tkinter 🛠️ (In Progress)
+* [x] Create GUI with Tkinter 🛠️ (In Progress)
 * [ ] Improve model (motorbike license plate) 
